@@ -9,6 +9,7 @@ from aiogram.types import Message
 from config import BOT_TOKEN
 import asyncio
 import logging
+import re
 
 
 HELP_LIST = """ 
@@ -58,16 +59,36 @@ async def handle_time_input(message: Message, state: FSMContext) -> None:
     if message.text == '/cancel':
         await handle_cancel(message, state)
         return
+
+    # Define a regular expression to parse the time input
+    time_pattern = re.compile(r'(\d+)([dhms])')
+    total_seconds = 0
+
     try:
-        time_suffix = message.text[-1]
-        time = int(message.text[:-1]) * (60 if time_suffix == 'm' else 1)
-        await state.update_data(time=time)
+        matches = time_pattern.findall(message.text)
+        if not matches:
+            raise ValueError("No valid time formats found.")
+
+        # Convert time units to seconds
+        for amount, unit in matches:
+            amount = int(amount)
+            if unit == 'd':
+                total_seconds += amount * 86400  # Days
+            elif unit == 'h':
+                total_seconds += amount * 3600   # Hours
+            elif unit == 'm':
+                total_seconds += amount * 60     # Minutes
+            elif unit == 's':
+                total_seconds += amount          # Seconds
+
+        await state.update_data(time=total_seconds)
         await state.set_state(AddMessageStates.message)
         await message.answer("Please type the message I should delete after this time.")
-        logger.debug(f"State set to message with time: {time} for user {message.from_user.id}")
-    except ValueError:
-        await message.answer("Invalid time format. Use '15s' for seconds or '2m' for minutes.")
-        logger.error(f"Invalid time format received from user {message.from_user.id}")
+        logger.debug(f"State set to message with time: {total_seconds} seconds for user {message.from_user.id}")
+    except ValueError as e:
+        await message.answer(str(e))
+        logger.error(f"Error parsing time format: {e} received from user {message.from_user.id}")
+
 
 
 @router.message(AddMessageStates.message)
